@@ -18,8 +18,8 @@ const (
 	MonthDuration = 30 * DayDuration
 	DateFormat    = "2006-01-02"
 
-	defaultWidth  = 6 * vg.Inch
-	defaultHeight = 4 * vg.Inch
+	defaultWidth  = 7 * vg.Inch
+	defaultHeight = 5 * vg.Inch
 )
 
 func main() {
@@ -50,13 +50,15 @@ func main() {
 	rc.LoadReleases()
 	per := newPeriod(rc, parseDateString(*start), parseDateString(*end))
 
+	drawProviderPostmortems(rc, per, "provider_postmortems.png")
+	drawCustomerPostmortems(rc, per, "customer_postmortems.png")
 	drawTotalIssues(rc, per, "total_issues.png")
 	drawOpenIssues(rc, per, "open_issues.png")
 	drawOpenIssueFraction(rc, per, "open_fraction.png")
 	drawOpenIssueAge(rc, per, "open_age.png")
-	drawIssueSolvedDuration(rc, per, "solved_duration.png")
-	drawTopReleaseDownloads(rc, per, "top_downloads.png")
-	buildImagesHTML("images.html", "total_issues.png", "open_issues.png", "open_fraction.png", "open_age.png", "solved_duration.png", "top_downloads.png")
+	buildImagesHTML("images.html", "total_issues.png", "open_issues.png", "open_fraction.png", "open_age.png")
+	buildImagesHTML("images_customer.html", "customer_postmortems.png")
+	buildImagesHTML("images_provider.html", "provider_postmortems.png")
 	fmt.Printf("saved images and browsing html\n")
 
 	startBrowser("images.html")

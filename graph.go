@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bmizerany/perks/quantile"
@@ -40,6 +41,127 @@ func (p *period) seqFloats(a []float64, interval time.Duration) seqFloats {
 	i := p.start.Sub(p.rc.StartTime()) / interval
 	j := p.end.Sub(p.rc.StartTime()) / interval
 	return a[i:j]
+}
+
+func drawProviderPostmortems(rc *repoClient, per *period, filename string) {
+	start, end := rc.StartTime(), rc.EndTime()
+
+	l := end.Sub(start)/DayDuration + 1
+	awsPostmortems := make([]int, l)
+	azurePostmortems := make([]int, l)
+	kvmPostmortems := make([]int, l)
+
+	rc.WalkIssues(func(i github.Issue, isPullRequest bool) {
+		c := i.CreatedAt
+		var isAWS, isAzure, isKVM, isPostmortem bool
+
+		for _, label := range i.Labels {
+			switch *label.Name {
+			case "postmortem":
+				isPostmortem = true
+			case "provider/aws":
+				isAWS = true
+			case "provider/azure":
+				isAzure = true
+			case "provider/kvm":
+				isKVM = true
+			}
+		}
+
+		if isPostmortem {
+			for k := c.Sub(start) / DayDuration; k <= end.Sub(start)/DayDuration; k++ {
+				if isAWS {
+					awsPostmortems[k]++
+				}
+				if isAzure {
+					azurePostmortems[k]++
+				}
+				if isKVM {
+					kvmPostmortems[k]++
+				}
+			}
+		}
+	})
+
+	p, err := plot.New()
+	if err != nil {
+		panic(err)
+	}
+
+	p.Title.Text = "Provider Postmortems"
+	p.X.Label.Text = fmt.Sprintf("Date from %s to %s", per.start.Format(DateFormat), per.end.Format(DateFormat))
+	p.Y.Label.Text = "Count"
+	err = plotutil.AddLines(p, "AWS", per.seqInts(awsPostmortems, DayDuration),
+		"Azure", per.seqInts(azurePostmortems, DayDuration),
+		"KVM", per.seqInts(kvmPostmortems, DayDuration))
+	if err != nil {
+		panic(err)
+	}
+	p.X.Tick.Marker = newDayTicker(p.X.Tick.Marker, per.start)
+
+	// Save the plot to a PNG file.
+	if err := p.Save(12*vg.Inch, 8*vg.Inch, filename); err != nil {
+		panic(err)
+	}
+}
+
+func drawCustomerPostmortems(rc *repoClient, per *period, filename string) {
+	start, end := rc.StartTime(), rc.EndTime()
+
+	l := end.Sub(start)/DayDuration + 1
+	postmortems := make(map[string][]int)
+
+	rc.WalkIssues(func(i github.Issue, isPullRequest bool) {
+		c := i.CreatedAt
+		var isPostmortem bool
+
+		for _, label := range i.Labels {
+			switch *label.Name {
+			case "postmortem":
+				isPostmortem = true
+			}
+		}
+
+		if isPostmortem {
+			for k := c.Sub(start) / DayDuration; k <= end.Sub(start)/DayDuration; k++ {
+				for _, label := range i.Labels {
+					if strings.Contains(*label.Name, "customer/") {
+						customer := strings.Replace(*label.Name, "customer/", "", 1)
+
+						if _, ok := postmortems[customer]; !ok {
+							postmortems[customer] = make([]int, l)
+						}
+
+						postmortems[strings.Replace(*label.Name, "customer/", "", 1)][k]++
+					}
+				}
+			}
+		}
+	})
+
+	p, err := plot.New()
+	if err != nil {
+		panic(err)
+	}
+
+	p.Title.Text = "Customer Postmortems"
+	p.X.Label.Text = fmt.Sprintf("Date from %s to %s", per.start.Format(DateFormat), per.end.Format(DateFormat))
+	p.Y.Label.Text = "Count"
+
+	lines := []interface{}{}
+	for key, value := range postmortems {
+		lines = append(lines, key, per.seqInts(value, DayDuration))
+	}
+	err = plotutil.AddLines(p, lines...)
+	if err != nil {
+		panic(err)
+	}
+	p.X.Tick.Marker = newDayTicker(p.X.Tick.Marker, per.start)
+
+	// Save the plot to a PNG file.
+	if err := p.Save(12*vg.Inch, 8*vg.Inch, filename); err != nil {
+		panic(err)
+	}
 }
 
 func drawTotalIssues(rc *repoClient, per *period, filename string) {
